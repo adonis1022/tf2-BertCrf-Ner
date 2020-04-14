@@ -165,7 +165,7 @@ def main(_):
   train_ds = train_ds.repeat(FLAGS.num_train_epoch)
   for step, (x,y) in enumerate(train_ds):
     model.fit(x, y)
-    if step % 1 == 0:
+    if step % 1000 == 0:
         print("eval_acc of step%d: %.5f " % (step, compute_acc(eval_ds, model)))
 
   model.save(os.path.join(FLAGS.model_dir, "trained_model"))
