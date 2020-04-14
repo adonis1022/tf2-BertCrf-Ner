@@ -1,0 +1,21 @@
+{
+    "task_type": "bert_classification",
+    "processor_type": "NER",
+    "num_labels": 10,
+    "train_data_size": 20864,
+    "labels_list": [
+        "B-PER",
+        "B-ORG",
+        "I-ORG",
+        "O",
+        "I-LOC",
+        "I-PER",
+        "B-LOC",
+        "X",
+        "[CLS]",
+        "[SEP]"
+    ],
+    "max_seq_length": 128,
+    "eval_data_size": 2318,
+    "test_data_size": 4636
+}
