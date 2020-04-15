@@ -20,7 +20,6 @@ from __future__ import print_function
 import json
 import math
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 from absl import app
 from absl import flags
@@ -30,17 +29,17 @@ import numpy as np
 # import custom_metrics
 import pickle
 import tensorflow as tf
-import numpy as np
 
-from official.modeling import model_training_utils
-from official.nlp import optimization
-from official.nlp.bert import bert_models
+
+# from official.modeling import model_training_utils
+# from official.nlp import optimization
+# from official.nlp.bert import bert_models
 from official.nlp.bert import common_flags
 from official.nlp.bert import configs as bert_configs
 from official.nlp.bert import input_pipeline
-from official.nlp.bert import model_saving_utils
+# from official.nlp.bert import model_saving_utils
 from official.utils.misc import distribution_utils
-#from official.utils.misc import keras_utils
+from official.utils.misc import keras_utils
 # from official.nlp.bert import run_classifier
 import tensorflow_hub as hub
 from official.nlp.modeling.layers import CRF
@@ -113,6 +112,16 @@ def compute_acc(ds, model):
     return correct_num / total_num
 
 
+def train_step(x, y, model, optimizer,loss_func):
+    with tf.GradientTape() as tape:
+        pred = model.call(x)
+        loss = loss_func(y, pred)
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+    return loss
+
+
 def BertCrf(model_file, max_length, num_labels, hidden_size=768):
     input_word_ids = tf.keras.layers.Input(shape=(max_length,), dtype=tf.int32, name="input_word_ids")
     segment_ids = tf.keras.layers.Input(shape=(max_length,), dtype=tf.int32, name="segment_ids")
@@ -124,7 +133,7 @@ def BertCrf(model_file, max_length, num_labels, hidden_size=768):
     decoded_sequence = crf(emission)
     model = tf.keras.Model(inputs=[input_word_ids, input_masks, segment_ids], outputs=decoded_sequence)
     model.compile(optimizer='adam', loss={'crf_layer': crf.get_loss})
-    return model
+    return model, crf
 
 def main(_):
   # Users should always run this script under TF 2.x
@@ -158,17 +167,24 @@ def main(_):
       is_training=False)
 
   bert_config = bert_configs.BertConfig.from_json_file(FLAGS.bert_config_file)
-  model = BertCrf(FLAGS.hub_module_url, max_length=max_seq_length, num_labels=input_meta_data["num_labels"] + 1)
+  model, crf = BertCrf(FLAGS.hub_module_url, max_length=max_seq_length, num_labels=input_meta_data["num_labels"] + 1)
   train_ds = train_input_fn()
   test_ds = test_input_fn()
   eval_ds = eval_input_fn()
-  train_ds = train_ds.repeat(FLAGS.num_train_epoch)
-  for step, (x,y) in enumerate(train_ds):
-    model.fit(x, y)
-    if step % 1000 == 0:
-        print("eval_acc of step%d: %.5f " % (step, compute_acc(eval_ds, model)))
 
+  optimizer = tf.keras.optimizers.Adam()
+  loss_func = crf.get_loss
+  for epoch in range(FLAGS.num_train_epoch):
+      for step, (x, y) in enumerate(train_ds):
+          loss = 0.0
+          loss = train_step(x, y, model, optimizer, loss_func)
+          loss = (tf.reduce_mean(loss).numpy())
+          if step % 50 == 0:
+              print("step%d train loss is %.5f" % (step, loss))
+          if step % 1000 == 0:
+              print("eval_acc of step%d: %.5f " % (step, compute_acc(eval_ds, model)))
   model.save(os.path.join(FLAGS.model_dir, "trained_model"))
+  print("model has been saved")
   # add testing accuracy process
   print("test_acc  is  %.5f " % (compute_acc(test_ds, model)))
 
